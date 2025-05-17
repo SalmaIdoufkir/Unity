@@ -24,6 +24,10 @@ import tempfile
 from werkzeug.utils import secure_filename
 import datetime
 
+from flask import send_file
+import os
+from pdf_generator import generate_pdf_summary
+
 app = Flask(__name__)
 
 # Connexion à MongoDB
@@ -161,6 +165,22 @@ def submit_response():
 def get_results_by_id(interview_id):
     interview = db.interviews.find_one({"interview_id": interview_id}, {'_id': 0})
     return jsonify(interview)
+
+@app.route('/interviews/<interview_id>/summary/pdf', methods=['GET'])
+def get_summary_pdf(interview_id):
+    interview = interview_collection.find_one({"interview_id": interview_id})
+    if not interview:
+        return jsonify({'error': 'Interview not found'}), 404
+
+    pdf_buffer = generate_pdf_summary(interview)
+
+    return send_file(
+        pdf_buffer,
+        as_attachment=True,
+        download_name=f"interview_{interview_id}_summary.pdf",
+        mimetype='application/pdf'
+    )
+
 
 if __name__ == "__main__":
     app.run(debug=True)
