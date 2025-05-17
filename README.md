@@ -185,5 +185,119 @@ def get_summary_pdf(interview_id):
 if __name__ == "__main__":
     app.run(debug=True)
 
+```
+
+# Fichier pdf_generator.py
+
+```python
+
+import io
+from reportlab.pdfgen import canvas
+from reportlab.lib.pagesizes import letter
+from reportlab.lib import colors
+
+def generate_pdf_summary(interview):
+    buffer = io.BytesIO()
+    pdf = canvas.Canvas(buffer, pagesize=letter)
+    width, height = letter
+    margin = 50
+    y = height - margin
+    box_width = width - 2 * margin
+
+    def add_page_number():
+        pdf.setFont("Helvetica", 9)
+        pdf.drawRightString(width - margin, 20, f"Page {pdf.getPageNumber()}")
+
+    def wrap_text_lines(text, max_width, font_name="Helvetica", font_size=10):
+        lines = []
+        for paragraph in text.split("\n"):
+            while paragraph:
+                cut = len(paragraph)
+                while pdf.stringWidth(paragraph[:cut], font_name, font_size) > max_width and cut > 0:
+                    cut -= 1
+                lines.append(paragraph[:cut])
+                paragraph = paragraph[cut:].lstrip()
+        return lines
+
+    total_questions = len(interview.get("questions", []))
+    total_correct = sum(q.get("correctness", 0) for q in interview.get("questions", []))
+    average_confidence = (
+        sum(q.get("confidence", 0) for q in interview.get("questions", [])) / total_questions
+        if total_questions > 0 else 0
+    )
+
+    feedbacks = [{
+        "question": q.get("question_enonce", ""),
+        "feedback": q.get("feedback", "No feedback provided."),
+        "answer": q.get("response_text", "")
+    } for q in interview.get("questions", [])]
+
+    # Header
+    pdf.setFont("Helvetica-Bold", 16)
+    pdf.drawString(margin, y, "Interview Summary Report")
+    y -= 30
+
+    # Stats
+    pdf.setFont("Helvetica", 12)
+    pdf.drawString(margin, y, f"Total Questions: {total_questions}")
+    y -= 18
+    pdf.drawString(margin, y, f"Correct Answers: {total_correct}")
+    y -= 18
+    pdf.drawString(margin, y, f"Average Confidence: {average_confidence * 100:.2f}%")
+    y -= 30
+
+    pdf.setFont("Helvetica-Bold", 13)
+    pdf.drawString(margin, y, "Detailed Feedback:")
+    y -= 20
+
+    for i, fb in enumerate(feedbacks):
+        if y < 150:
+            add_page_number()
+            pdf.showPage()
+            y = height - margin
+
+        # Question block
+        question_lines = wrap_text_lines(fb['question'], box_width)
+        line_height = 12
+        total_height = (len(question_lines) + 1) * line_height + 10
+
+        pdf.setFillColor(colors.lightgrey)
+        pdf.rect(margin - 5, y - total_height + 10, box_width + 10, total_height, fill=1, stroke=0)
+        pdf.setFillColor(colors.black)
+
+        text_obj = pdf.beginText(margin, y)
+        text_obj.setFont("Helvetica-Bold", 10)
+        text_obj.textLine(f"Question {i + 1}:")
+        text_obj.setFont("Helvetica", 10)
+        for line in question_lines:
+            text_obj.textLine(line)
+        pdf.drawText(text_obj)
+        y -= total_height + 5
+
+        # Answer
+        pdf.setFont("Helvetica-Bold", 10)
+        pdf.drawString(margin, y, "Answer:")
+        y -= 15
+        pdf.setFont("Helvetica", 10)
+        for line in wrap_text_lines(fb['answer'], box_width):
+            pdf.drawString(margin, y, line)
+            y -= line_height
+
+        # Feedback
+        y -= 10
+        pdf.setFont("Helvetica-Bold", 10)
+        pdf.drawString(margin, y, "Feedback:")
+        y -= 15
+        pdf.setFont("Helvetica", 10)
+        for line in wrap_text_lines(fb['feedback'], box_width):
+            pdf.drawString(margin, y, line)
+            y -= line_height
+
+        y -= 30
+
+    add_page_number()
+    pdf.save()
+    buffer.seek(0)
+    return buffer
 
 
